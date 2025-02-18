@@ -2,21 +2,37 @@ package main
 
 import (
 	"image/color"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
-	_ "golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 )
 
 const (
-	windowWidth  = 600
-	windowHeight = 400
+	windowWidth   = 600
+	windowHeight  = 400
+	eventDuration = time.Second
 )
 
-type Game struct{}
+type Game struct {
+	lastEvent string
+	eventTime time.Time
+}
 
 func (g *Game) Update() error {
+	if ebiten.IsKeyPressed(ebiten.KeyNumpad1) {
+		g.lastEvent = "Split"
+		g.eventTime = time.Now()
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyNumpad8) {
+		g.lastEvent = "Undo"
+		g.eventTime = time.Now()
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyNumpad3) {
+		g.lastEvent = "Reset"
+		g.eventTime = time.Now()
+	}
 	return nil
 }
 
@@ -42,6 +58,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	text.Draw(screen, "Act 6 ~ The Demon           31.00    13:30.00", fontFace, 50, 240, white)
 
 	text.Draw(screen, "0.00", fontFace, 270, 300, green)
+
+	if time.Since(g.eventTime) < eventDuration {
+		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
+	}
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
