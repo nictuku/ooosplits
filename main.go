@@ -73,8 +73,8 @@ func main() {
 
 func registerHotkeys(g *Game) {
 	hkSplit := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x53)) // NumPad1
-	hkUndo := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x58))  // NumPad8
-	hkReset := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x54)) // NumPad3
+	hkReset := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x55)) // NumPad3 (corrected)
+	hkUndo := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x5B))  // NumPad8 (corrected)
 
 	if err := hkUndo.Register(); err != nil {
 		log.Printf("Failed to register Undo hotkey: %v", err)
