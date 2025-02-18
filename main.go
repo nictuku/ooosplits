@@ -38,15 +38,15 @@ type Config struct {
 }
 
 type Game struct {
-	lastEvent     string
-	eventTime     time.Time
-	config        Config
-	startTime     time.Time
+	lastEvent      string
+	eventTime      time.Time
+	config         Config
+	startTime      time.Time
 	splitStartTime time.Time
-	isRunning     bool
-	currentSplit  int
-	splits        []time.Duration
-	completed     bool
+	isRunning      bool
+	currentSplit   int
+	splits         []time.Duration
+	completed      bool
 }
 
 func loadConfig(filename string) (Config, error) {
@@ -107,10 +107,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		yPos += 20
 	}
 
-	// Draw big timer
+	// Create big timer display value
 	var displayTime string
 	if !g.isRunning && len(g.splits) == 0 {
-		displayTime = "0.000"
+		displayTime = "0:00:00.00"
 	} else if g.completed {
 		var total time.Duration
 		for _, split := range g.splits {
@@ -122,25 +122,43 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		displayTime = formatDurationMicro(currentTime)
 	}
 
-	// Create bigger font - using 3x scale
+	// Create scaled font mask
+	scale := 3
+	originalMask := basicfont.Face7x13.Mask
+	bounds := originalMask.Bounds()
+	newMask := ebiten.NewImage(bounds.Dx()*scale, bounds.Dy()*scale)
+
+	// Scale up the mask image
+	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
+		for x := bounds.Min.X; x < bounds.Max.X; x++ {
+			if _, _, _, a := originalMask.At(x, y).RGBA(); a > 0 {
+				for sy := 0; sy < scale; sy++ {
+					for sx := 0; sx < scale; sx++ {
+						newMask.Set((x-bounds.Min.X)*scale+sx, (y-bounds.Min.Y)*scale+sy, color.White)
+					}
+				}
+			}
+		}
+	}
+
+	// Create scaled font
 	bigFontFace := &basicfont.Face{
-		Advance: 21,     // 7 * 3
-		Width:   18,     // 6 * 3
-		Height:  39,     // 13 * 3
-		Ascent:  33,     // 11 * 3
-		Descent: 6,      // 2 * 3
-		Mask:    basicfont.Face7x13.Mask,
-		Ranges: []basicfont.Range{
-			{'\u0020', '\u007f', 0},
-			{'\ufffd', '\ufffe', 95},
-		},
+		Advance: basicfont.Face7x13.Advance * scale,
+		Width:   basicfont.Face7x13.Width * scale,
+		Height:  basicfont.Face7x13.Height * scale,
+		Ascent:  basicfont.Face7x13.Ascent * scale,
+		Descent: basicfont.Face7x13.Descent * scale,
+		Left:    basicfont.Face7x13.Left * scale,
+		Mask:    newMask,
+		Ranges:  basicfont.Face7x13.Ranges, // Ranges stay the same
 	}
 
 	// Draw the big timer centered
-	bounds := font.MeasureString(bigFontFace, displayTime)
-	x := (windowWidth - bounds.Round()) / 2
+	textWidth := font.MeasureString(bigFontFace, displayTime)
+	x := (windowWidth - textWidth.Round()) / 2
 	text.Draw(screen, displayTime, bigFontFace, x, 300, green)
 
+	// Draw event text if needed
 	if time.Since(g.eventTime) < eventDuration {
 		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
 	}
@@ -158,14 +176,15 @@ func formatDuration(d time.Duration) string {
 }
 
 func formatDurationMicro(d time.Duration) string {
-	minutes := int(d.Minutes())
+	hours := int(d.Hours())
+	minutes := int(d.Minutes()) % 60
 	seconds := int(d.Seconds()) % 60
-	milliseconds := int(d.Milliseconds()) % 1000
+	centiseconds := int(d.Milliseconds() % 1000) / 10 // Convert to centiseconds
 
-	if minutes > 0 {
-		return fmt.Sprintf("%d:%02d.%03d", minutes, seconds, milliseconds)
+	if hours > 0 {
+		return fmt.Sprintf("%d:%02d:%02d.%02d", hours, minutes, seconds, centiseconds)
 	}
-	return fmt.Sprintf("%d.%03d", seconds, milliseconds)
+	return fmt.Sprintf("%02d:%02d.%02d", minutes, seconds, centiseconds)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
