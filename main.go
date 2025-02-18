@@ -11,6 +11,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"golang.design/x/hotkey"
+	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 )
 
@@ -37,9 +38,15 @@ type Config struct {
 }
 
 type Game struct {
-	lastEvent string
-	eventTime time.Time
-	config    Config
+	lastEvent     string
+	eventTime     time.Time
+	config        Config
+	startTime     time.Time
+	splitStartTime time.Time
+	isRunning     bool
+	currentSplit  int
+	splits        []time.Duration
+	completed     bool
 }
 
 func loadConfig(filename string) (Config, error) {
@@ -71,7 +78,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	// Draw title and category
 	text.Draw(screen, g.config.Title, fontFace, 220, 20, white)
 	text.Draw(screen, g.config.Category, fontFace, 270, 40, white)
-	
+
 	// Draw attempts
 	attemptText := fmt.Sprintf("%d/%d", g.config.Completed, g.config.Attempts)
 	text.Draw(screen, attemptText, fontFace, 270, 60, white)
@@ -80,22 +87,59 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	yPos := 100
 	var totalTime time.Duration
 	for i, splitName := range g.config.SplitNames {
-		if i < len(g.config.PersonalBest.Splits) {
-			splitTime, _ := time.ParseDuration(g.config.PersonalBest.Splits[i].Time)
+		splitTimeStr := "-"
+		totalTimeStr := "-"
+		
+		if i < len(g.splits) {
+			splitTime := g.splits[i]
 			totalTime += splitTime
-			
-			// Format individual split time
-			splitTimeStr := formatDuration(splitTime)
-			// Format total time
-			totalTimeStr := formatDuration(totalTime)
-			
-			splitLine := fmt.Sprintf("%-25s %10s %10s", splitName, splitTimeStr, totalTimeStr)
-			text.Draw(screen, splitLine, fontFace, 50, yPos, white)
-			yPos += 20
+			splitTimeStr = formatDuration(splitTime)
+			totalTimeStr = formatDuration(totalTime)
+		} else if i == g.currentSplit && g.isRunning {
+			currentSplitTime := time.Since(g.splitStartTime)
+			totalTime += currentSplitTime
+			splitTimeStr = formatDuration(currentSplitTime)
+			totalTimeStr = formatDuration(totalTime)
 		}
+
+		splitLine := fmt.Sprintf("%-25s %10s %10s", splitName, splitTimeStr, totalTimeStr)
+		text.Draw(screen, splitLine, fontFace, 50, yPos, white)
+		yPos += 20
 	}
 
-	text.Draw(screen, "0.00", fontFace, 270, 300, green)
+	// Draw big timer
+	var displayTime string
+	if !g.isRunning && len(g.splits) == 0 {
+		displayTime = "0.000"
+	} else if g.completed {
+		var total time.Duration
+		for _, split := range g.splits {
+			total += split
+		}
+		displayTime = formatDurationMicro(total)
+	} else if g.isRunning {
+		currentTime := time.Since(g.startTime)
+		displayTime = formatDurationMicro(currentTime)
+	}
+
+	// Create bigger font - using 3x scale
+	bigFontFace := &basicfont.Face{
+		Advance: 21,     // 7 * 3
+		Width:   18,     // 6 * 3
+		Height:  39,     // 13 * 3
+		Ascent:  33,     // 11 * 3
+		Descent: 6,      // 2 * 3
+		Mask:    basicfont.Face7x13.Mask,
+		Ranges: []basicfont.Range{
+			{'\u0020', '\u007f', 0},
+			{'\ufffd', '\ufffe', 95},
+		},
+	}
+
+	// Draw the big timer centered
+	bounds := font.MeasureString(bigFontFace, displayTime)
+	x := (windowWidth - bounds.Round()) / 2
+	text.Draw(screen, displayTime, bigFontFace, x, 300, green)
 
 	if time.Since(g.eventTime) < eventDuration {
 		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
@@ -113,6 +157,17 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%d.%02d", seconds, milliseconds)
 }
 
+func formatDurationMicro(d time.Duration) string {
+	minutes := int(d.Minutes())
+	seconds := int(d.Seconds()) % 60
+	milliseconds := int(d.Milliseconds()) % 1000
+
+	if minutes > 0 {
+		return fmt.Sprintf("%d:%02d.%03d", minutes, seconds, milliseconds)
+	}
+	return fmt.Sprintf("%d.%03d", seconds, milliseconds)
+}
+
 func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeight int) {
 	return windowWidth, windowHeight
 }
@@ -125,6 +180,7 @@ func main() {
 
 	game := &Game{
 		config: config,
+		splits: make([]time.Duration, 0, len(config.SplitNames)),
 	}
 
 	ebiten.SetWindowSize(windowWidth, windowHeight)
@@ -156,14 +212,51 @@ func registerHotkeys(g *Game) {
 	for {
 		select {
 		case <-hkSplit.Keydown():
-			g.lastEvent = "Split"
+			if !g.isRunning {
+				// Start the timer
+				g.isRunning = true
+				g.startTime = time.Now()
+				g.splitStartTime = g.startTime
+				g.currentSplit = 0
+				g.lastEvent = "Started"
+			} else if g.currentSplit < len(g.config.SplitNames) {
+				// Record split time
+				splitDuration := time.Since(g.splitStartTime)
+				g.splits = append(g.splits, splitDuration)
+				
+				if g.currentSplit == len(g.config.SplitNames)-1 {
+					// This was the last split
+					g.isRunning = false
+					g.completed = true
+					g.lastEvent = "Finished"
+				} else {
+					// Start next split
+					g.currentSplit++
+					g.splitStartTime = time.Now()
+					g.lastEvent = "Split"
+				}
+			}
 			g.eventTime = time.Now()
 			log.Println("Split triggered")
+
 		case <-hkUndo.Keydown():
+			if g.isRunning && g.currentSplit > 0 {
+				// Remove last split and go back
+				g.splits = g.splits[:len(g.splits)-1]
+				g.currentSplit--
+				g.splitStartTime = time.Now()
+				g.completed = false
+			}
 			g.lastEvent = "Undo"
 			g.eventTime = time.Now()
 			log.Println("Undo triggered")
+
 		case <-hkReset.Keydown():
+			// Reset everything
+			g.isRunning = false
+			g.currentSplit = 0
+			g.splits = make([]time.Duration, 0, len(g.config.SplitNames))
+			g.completed = false
 			g.lastEvent = "Reset"
 			g.eventTime = time.Now()
 			log.Println("Reset triggered")

@@ -1,4 +1,4 @@
-module github.com/nictuku/spit
+module github.com/nictuku/splits
 
 go 1.22.0
 
