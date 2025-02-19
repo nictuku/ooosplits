@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	windowWidth   = 350
+	windowWidth   = 400
 	windowHeight  = 400
 	eventDuration = time.Second
 	dbPath        = "speedrun.db"
@@ -57,8 +57,24 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	attemptText := fmt.Sprintf("%d/%d", completedRuns, attempts)
 	text.Draw(screen, attemptText, fontFace, 270, 60, white)
 
-	yPos := 100
+	maxTimeWidth := 0
+	for i := range splitNames {
+		splitTimeStr := "-"
+		if i < len(splits) {
+			splitTimeStr = formatDuration(splits[i])
+		} else if i == currentSplit && isRunning {
+			splitTimeStr = formatDuration(g.runManager.GetCurrentSplitTime())
+		} else if pb != nil && i < len(pb.Splits) {
+			splitTimeStr = "-"
+		}
 
+		timeWidth := font.MeasureString(fontFace, splitTimeStr).Round()
+		if timeWidth > maxTimeWidth {
+			maxTimeWidth = timeWidth
+		}
+	}
+
+	yPos := 100
 	for i, splitName := range splitNames {
 		splitTimeStr := "-"
 		diffStr := ""
@@ -100,17 +116,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			splitTimeStr = "-"
 		}
 
-		lineX := 50
+		lineX := 20
 		lineY := yPos
 
-		splitLine := fmt.Sprintf("%-18s %6s", splitName, splitTimeStr)
-		text.Draw(screen, splitLine, fontFace, lineX, lineY, white)
+		timeX := lineX + font.MeasureString(fontFace, "                    ").Round()
 
-		lineWidth := font.MeasureString(fontFace, splitLine).Round()
+		text.Draw(screen, splitName, fontFace, lineX, lineY, white)
+		text.Draw(screen, splitTimeStr, fontFace, timeX, lineY, white)
 
 		if diffStr != "" {
-			const gap = 8
-			diffX := lineX + lineWidth + gap
+			const gap = 12
+			diffX := timeX + maxTimeWidth + gap
 			text.Draw(screen, diffStr, fontFace, diffX, lineY, diffColor)
 		}
 
@@ -208,6 +224,7 @@ func main() {
 
 	ebiten.SetWindowSize(windowWidth, windowHeight)
 	ebiten.SetWindowTitle("Speedrun Timer")
+	ebiten.SetTPS(60)
 
 	go registerHotkeys(game)
 
