@@ -1,4 +1,4 @@
-# Speedrun Timer
+# OooSplits - Speedrun Timer
 
 This project is a speedrun timer application built using Go and the Ebiten game library. It allows users to track their speedrun attempts, splits, and personal bests for various games and categories. The application uses a SQLite database to store run data and configurations.
 
@@ -91,7 +91,7 @@ You can import a configuration from a JSON file to set up your speedrun environm
 To import a configuration, use the `-import` flag followed by the path to your JSON file when starting the application:
 
 ```
-./speedrun-timer -import path/to/your/config.json
+./oosplits -import path/to/your/config.json
 ```
 
 ## License
