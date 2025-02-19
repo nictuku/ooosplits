@@ -6,6 +6,7 @@ toolchain go1.23.6
 
 require (
 	github.com/hajimehoshi/ebiten/v2 v2.8.6
+	github.com/mattn/go-sqlite3 v1.14.24
 	golang.design/x/hotkey v0.4.1
 	golang.org/x/image v0.24.0
 )
