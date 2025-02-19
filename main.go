@@ -99,19 +99,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		} else if i == currentSplit && isRunning {
 			currentSplitTime := g.runManager.GetCurrentSplitTime()
 			splitTimeStr = formatDuration(currentSplitTime)
-
-			if pb != nil && i < len(pb.Splits) {
-				pbSplitTime := pb.Splits[i].Duration
-				timeDiff := currentSplitTime - pbSplitTime
-
-				if timeDiff < 0 {
-					diffStr = fmt.Sprintf(" (-%s)", formatDuration(-timeDiff))
-					diffColor = green
-				} else if timeDiff > 0 {
-					diffStr = fmt.Sprintf(" (+%s)", formatDuration(timeDiff))
-					diffColor = orange
-				}
-			}
 		} else if pb != nil && i < len(pb.Splits) {
 			splitTimeStr = "-"
 		}
