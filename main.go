@@ -13,7 +13,7 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 
-	"github.com/nictuku/oosplits/speedrun"
+	"github.com/nictuku/ooosplits/speedrun"
 )
 
 const (
