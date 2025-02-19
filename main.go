@@ -119,14 +119,14 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		lineX := 20
 		lineY := yPos
 
-		timeX := lineX + font.MeasureString(fontFace, "                    ").Round()
+		splitLine := fmt.Sprintf("%-30s %6s", splitName, splitTimeStr)
+		text.Draw(screen, splitLine, fontFace, lineX, lineY, white)
 
-		text.Draw(screen, splitName, fontFace, lineX, lineY, white)
-		text.Draw(screen, splitTimeStr, fontFace, timeX, lineY, white)
+		lineWidth := font.MeasureString(fontFace, splitLine).Round()
 
 		if diffStr != "" {
-			const gap = 12
-			diffX := timeX + maxTimeWidth + gap
+			const gap = 15
+			diffX := lineX + lineWidth + gap
 			text.Draw(screen, diffStr, fontFace, diffX, lineY, diffColor)
 		}
 
