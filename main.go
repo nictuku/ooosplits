@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image/color"
 	"log"
@@ -23,9 +24,9 @@ const (
 )
 
 type Game struct {
-	lastEvent      string
-	eventTime      time.Time
-	runManager     *speedrun.RunManager
+	lastEvent  string
+	eventTime  time.Time
+	runManager *speedrun.RunManager
 }
 
 func (g *Game) Update() error {
@@ -69,20 +70,20 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		totalTimeStr := "-"
 		diffStr := ""
 		diffColor := white
-		
+
 		if i < len(splits) {
 			// This split is completed
 			splitTime := splits[i]
 			cumulativeTime += splitTime
 			splitTimeStr = formatDuration(splitTime)
 			totalTimeStr = formatDuration(cumulativeTime)
-			
+
 			// Compare with PB if available
 			if pb != nil && i < len(pb.Splits) {
 				pbSplitTime := pb.Splits[i].Duration
 				pbCumulativeTime += pbSplitTime
 				timeDiff := splitTime - pbSplitTime
-				
+
 				if timeDiff < 0 {
 					// Faster than PB
 					diffStr = fmt.Sprintf(" (-%s)", formatDuration(-timeDiff))
@@ -99,13 +100,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			cumulativeTime += currentSplitTime
 			splitTimeStr = formatDuration(currentSplitTime)
 			totalTimeStr = formatDuration(cumulativeTime)
-			
+
 			// For current split, compare against PB in real-time
 			if pb != nil && i < len(pb.Splits) {
 				pbSplitTime := pb.Splits[i].Duration
 				pbCumulativeTime += pbSplitTime
 				timeDiff := currentSplitTime - pbSplitTime
-				
+
 				if timeDiff < 0 {
 					diffStr = fmt.Sprintf(" (-%s)", formatDuration(-timeDiff))
 					diffColor = green
@@ -125,12 +126,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		// Draw split name and time
 		splitLine := fmt.Sprintf("%-25s %10s%s %10s", splitName, splitTimeStr, "", totalTimeStr)
 		text.Draw(screen, splitLine, fontFace, 50, yPos, white)
-		
+
 		// Draw difference separately to use different color
 		if diffStr != "" {
 			text.Draw(screen, diffStr, fontFace, 50+25*7+10, yPos, diffColor)
 		}
-		
+
 		yPos += 20
 	}
 
@@ -194,7 +195,7 @@ func formatDurationMicro(d time.Duration) string {
 	hours := int(d.Hours())
 	minutes := int(d.Minutes()) % 60
 	seconds := int(d.Seconds()) % 60
-	centiseconds := int(d.Milliseconds() % 1000) / 10 // Convert to centiseconds
+	centiseconds := int(d.Milliseconds()%1000) / 10 // Convert to centiseconds
 
 	if hours > 0 {
 		return fmt.Sprintf("%d:%02d:%02d.%02d", hours, minutes, seconds, centiseconds)
@@ -207,12 +208,26 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func main() {
+	// Parse command line arguments
+	var importFile string
+	flag.StringVar(&importFile, "import", "", "Import configuration from JSON file")
+	flag.Parse()
+
 	// Initialize run manager
 	runManager, err := speedrun.NewRunManager(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize run manager: %v", err)
 	}
 	defer runManager.Close()
+
+	// Import JSON configuration if specified
+	if importFile != "" {
+		log.Printf("Importing configuration from %s", importFile)
+		if err := runManager.ImportFromJSON(importFile); err != nil {
+			log.Fatalf("Failed to import configuration: %v", err)
+		}
+		log.Printf("Successfully imported configuration")
+	}
 
 	game := &Game{
 		runManager: runManager,
@@ -257,7 +272,7 @@ func registerHotkeys(g *Game) {
 				if err != nil {
 					log.Printf("Error recording split: %v", err)
 				}
-				
+
 				if isFinished {
 					g.lastEvent = "Finished"
 				} else {
