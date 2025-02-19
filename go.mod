@@ -1,4 +1,4 @@
-module github.com/nictuku/splits
+module github.com/nictuku/oosplits
 
 go 1.22.0
 
