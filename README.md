@@ -28,9 +28,8 @@ This project is a speedrun timer application built using Go and the Ebiten game 
 
 ## Example Configuration
 
-You can import a configuration from a JSON file to set up your speedrun environment. Below is an example configuration file:
+You can import a configuration from a JSON file to set up your speedrun environment. The JSON format is compatible with https://github.com/alexozer/flitter. Below is an example configuration file:
 
-```json
 {
   "title": "Ninja Gaiden (NES)",
   "category": "Any%",
@@ -86,7 +85,6 @@ You can import a configuration from a JSON file to set up your speedrun environm
     ]
   }
 }
-```
 
 To import a configuration, use the `-import` flag followed by the path to your JSON file when starting the application:
 
