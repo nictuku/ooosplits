@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	windowWidth   = 600
+	windowWidth   = 350
 	windowHeight  = 400
 	eventDuration = time.Second
 	dbPath        = "speedrun.db"
@@ -41,7 +41,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	green := color.RGBA{0, 255, 0, 255}
 	orange := color.RGBA{255, 165, 0, 255}
 
-	// Get data from run manager
 	title := g.runManager.GetTitle()
 	category := g.runManager.GetCategory()
 	completedRuns := g.runManager.GetCompletedRuns()
@@ -52,59 +51,41 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	splits := g.runManager.GetCurrentSplits()
 	pb := g.runManager.GetPersonalBest()
 
-	// Draw title and category
 	text.Draw(screen, title, fontFace, 220, 20, white)
 	text.Draw(screen, category, fontFace, 270, 40, white)
 
-	// Draw attempts
 	attemptText := fmt.Sprintf("%d/%d", completedRuns, attempts)
 	text.Draw(screen, attemptText, fontFace, 270, 60, white)
 
-	// Draw splits
 	yPos := 100
-	var cumulativeTime time.Duration
-	var pbCumulativeTime time.Duration
 
 	for i, splitName := range splitNames {
 		splitTimeStr := "-"
-		totalTimeStr := "-"
 		diffStr := ""
 		diffColor := white
 
 		if i < len(splits) {
-			// This split is completed
 			splitTime := splits[i]
-			cumulativeTime += splitTime
 			splitTimeStr = formatDuration(splitTime)
-			totalTimeStr = formatDuration(cumulativeTime)
 
-			// Compare with PB if available
 			if pb != nil && i < len(pb.Splits) {
 				pbSplitTime := pb.Splits[i].Duration
-				pbCumulativeTime += pbSplitTime
 				timeDiff := splitTime - pbSplitTime
 
 				if timeDiff < 0 {
-					// Faster than PB
 					diffStr = fmt.Sprintf(" (-%s)", formatDuration(-timeDiff))
 					diffColor = green
 				} else if timeDiff > 0 {
-					// Slower than PB
 					diffStr = fmt.Sprintf(" (+%s)", formatDuration(timeDiff))
 					diffColor = orange
 				}
 			}
 		} else if i == currentSplit && isRunning {
-			// Current active split
 			currentSplitTime := g.runManager.GetCurrentSplitTime()
-			cumulativeTime += currentSplitTime
 			splitTimeStr = formatDuration(currentSplitTime)
-			totalTimeStr = formatDuration(cumulativeTime)
 
-			// For current split, compare against PB in real-time
 			if pb != nil && i < len(pb.Splits) {
 				pbSplitTime := pb.Splits[i].Duration
-				pbCumulativeTime += pbSplitTime
 				timeDiff := currentSplitTime - pbSplitTime
 
 				if timeDiff < 0 {
@@ -116,35 +97,33 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				}
 			}
 		} else if pb != nil && i < len(pb.Splits) {
-			// Show upcoming PB splits
-			pbSplitTime := pb.Splits[i].Duration
-			pbCumulativeTime += pbSplitTime
 			splitTimeStr = "-"
-			totalTimeStr = "-"
 		}
 
-		// Draw split name and time
-		splitLine := fmt.Sprintf("%-25s %10s%s %10s", splitName, splitTimeStr, "", totalTimeStr)
-		text.Draw(screen, splitLine, fontFace, 50, yPos, white)
+		lineX := 50
+		lineY := yPos
 
-		// Draw difference separately to use different color
+		splitLine := fmt.Sprintf("%-18s %6s", splitName, splitTimeStr)
+		text.Draw(screen, splitLine, fontFace, lineX, lineY, white)
+
+		lineWidth := font.MeasureString(fontFace, splitLine).Round()
+
 		if diffStr != "" {
-			text.Draw(screen, diffStr, fontFace, 50+25*7+10, yPos, diffColor)
+			const gap = 8
+			diffX := lineX + lineWidth + gap
+			text.Draw(screen, diffStr, fontFace, diffX, lineY, diffColor)
 		}
 
 		yPos += 20
 	}
 
-	// Create big timer display value
 	displayTime := formatDurationMicro(g.runManager.GetCurrentTime())
 
-	// Create scaled font mask
 	scale := 3
 	originalMask := basicfont.Face7x13.Mask
 	bounds := originalMask.Bounds()
 	newMask := ebiten.NewImage(bounds.Dx()*scale, bounds.Dy()*scale)
 
-	// Scale up the mask image
 	for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			if _, _, _, a := originalMask.At(x, y).RGBA(); a > 0 {
@@ -157,7 +136,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		}
 	}
 
-	// Create scaled font
 	bigFontFace := &basicfont.Face{
 		Advance: basicfont.Face7x13.Advance * scale,
 		Width:   basicfont.Face7x13.Width * scale,
@@ -166,15 +144,13 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		Descent: basicfont.Face7x13.Descent * scale,
 		Left:    basicfont.Face7x13.Left * scale,
 		Mask:    newMask,
-		Ranges:  basicfont.Face7x13.Ranges, // Ranges stay the same
+		Ranges:  basicfont.Face7x13.Ranges,
 	}
 
-	// Draw the big timer centered
 	textWidth := font.MeasureString(bigFontFace, displayTime)
 	x := (windowWidth - textWidth.Round()) / 2
 	text.Draw(screen, displayTime, bigFontFace, x, 300, green)
 
-	// Draw event text if needed
 	if time.Since(g.eventTime) < eventDuration {
 		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
 	}
@@ -195,7 +171,7 @@ func formatDurationMicro(d time.Duration) string {
 	hours := int(d.Hours())
 	minutes := int(d.Minutes()) % 60
 	seconds := int(d.Seconds()) % 60
-	centiseconds := int(d.Milliseconds()%1000) / 10 // Convert to centiseconds
+	centiseconds := int(d.Milliseconds()%1000) / 10
 
 	if hours > 0 {
 		return fmt.Sprintf("%d:%02d:%02d.%02d", hours, minutes, seconds, centiseconds)
@@ -208,19 +184,16 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (screenWidth, screenHeigh
 }
 
 func main() {
-	// Parse command line arguments
 	var importFile string
 	flag.StringVar(&importFile, "import", "", "Import configuration from JSON file")
 	flag.Parse()
 
-	// Initialize run manager
 	runManager, err := speedrun.NewRunManager(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize run manager: %v", err)
 	}
 	defer runManager.Close()
 
-	// Import JSON configuration if specified
 	if importFile != "" {
 		log.Printf("Importing configuration from %s", importFile)
 		if err := runManager.ImportFromJSON(importFile); err != nil {
@@ -236,7 +209,6 @@ func main() {
 	ebiten.SetWindowSize(windowWidth, windowHeight)
 	ebiten.SetWindowTitle("Speedrun Timer")
 
-	// Register hotkeys
 	go registerHotkeys(game)
 
 	if err := ebiten.RunGame(game); err != nil {
@@ -245,9 +217,9 @@ func main() {
 }
 
 func registerHotkeys(g *Game) {
-	hkSplit := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x53)) // NumPad1
-	hkReset := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x55)) // NumPad3
-	hkUndo := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x5B))  // NumPad8
+	hkSplit := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x53))
+	hkReset := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x55))
+	hkUndo := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x5B))
 
 	if err := hkUndo.Register(); err != nil {
 		log.Printf("Failed to register Undo hotkey: %v", err)
@@ -263,11 +235,9 @@ func registerHotkeys(g *Game) {
 		select {
 		case <-hkSplit.Keydown():
 			if !g.runManager.IsRunning() {
-				// Start the timer
 				g.runManager.StartRun()
 				g.lastEvent = "Started"
 			} else {
-				// Record split time
 				isFinished, err := g.runManager.Split()
 				if err != nil {
 					log.Printf("Error recording split: %v", err)
