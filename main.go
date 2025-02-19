@@ -154,6 +154,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	x := (windowWidth - textWidth.Round()) / 2
 	text.Draw(screen, displayTime, bigFontFace, x, 300, green)
 
+	attributionText := "OooSplits by OopsKapootz"
+	attributionFontFace := basicfont.Face7x13
+	attributionWidth := font.MeasureString(attributionFontFace, attributionText).Round()
+	attributionX := (windowWidth - attributionWidth) / 2
+	attributionY := windowHeight - 15
+	attributionColor := color.RGBA{150, 150, 150, 255}
+
+	text.Draw(screen, attributionText, attributionFontFace, attributionX, attributionY, attributionColor)
+
 	if time.Since(g.eventTime) < eventDuration {
 		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
 	}
