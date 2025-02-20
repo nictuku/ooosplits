@@ -47,7 +47,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	attempts := g.runManager.GetAttempts()
 	splitNames := g.runManager.GetSplitNames()
 	currentSplit := g.runManager.GetCurrentSplit()
-	isRunning := g.runManager.IsRunning()
+	//isRunning := g.runManager.IsRunning()
 	splits := g.runManager.GetCurrentSplits()
 	pb := g.runManager.GetPersonalBest()
 
@@ -57,70 +57,61 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	attemptText := fmt.Sprintf("%d/%d", completedRuns, attempts)
 	text.Draw(screen, attemptText, fontFace, 270, 60, white)
 
-	maxTimeWidth := 0
-	for i := range splitNames {
-		splitTimeStr := "-"
-		if i < len(splits) {
-			splitTimeStr = formatDuration(splits[i])
-		} else if i == currentSplit && isRunning {
-			splitTimeStr = formatDuration(g.runManager.GetCurrentSplitTime())
-		} else if pb != nil && i < len(pb.Splits) {
-			splitTimeStr = formatDuration(pb.Splits[i].Duration)
-		}
-
-		timeWidth := font.MeasureString(fontFace, splitTimeStr).Round()
-		if timeWidth > maxTimeWidth {
-			maxTimeWidth = timeWidth
-		}
-	}
+	cumulativeTime := time.Duration(0)
+	cumulativePbTime := time.Duration(0)
 
 	yPos := 100
 	for i, splitName := range splitNames {
-		splitTimeStr := "-"
+		if i < len(splits) {
+			cumulativeTime += splits[i]
+		}
+		if pb != nil && i < len(pb.Splits) {
+			cumulativePbTime += pb.Splits[i].Duration
+		}
+
+		var displayTime time.Duration
+		if i < len(splits) {
+			displayTime = cumulativeTime
+		} else if i == currentSplit && g.runManager.IsRunning() {
+			displayTime = cumulativeTime + g.runManager.GetCurrentSplitTime()
+		} else if pb != nil && i < len(pb.Splits) {
+			displayTime = cumulativePbTime
+		}
+
+		splitTimeStr := formatDuration(displayTime)
 		diffStr := ""
 		diffColor := white
 
-		if i < len(splits) {
-			splitTime := splits[i]
-			splitTimeStr = formatDuration(splitTime)
-
-			if pb != nil && i < len(pb.Splits) {
-				pbSplitTime := pb.Splits[i].Duration
-				timeDiff := splitTime - pbSplitTime
-
-				if timeDiff < 0 {
-					diffStr = fmt.Sprintf(" (-%s)", formatDuration(-timeDiff))
-					diffColor = green
-				} else if timeDiff > 0 {
-					diffStr = fmt.Sprintf(" (+%s)", formatDuration(timeDiff))
-					diffColor = orange
-				}
+		if i < len(splits) && pb != nil && i < len(pb.Splits) {
+			diff := cumulativeTime - cumulativePbTime
+			if diff < 0 {
+				diffStr = fmt.Sprintf(" (-%s)", formatDuration(-diff))
+				diffColor = green
+			} else if diff > 0 {
+				diffStr = fmt.Sprintf(" (+%s)", formatDuration(diff))
+				diffColor = orange
 			}
-		} else if i == currentSplit && isRunning {
-			currentSplitTime := g.runManager.GetCurrentSplitTime()
-			splitTimeStr = formatDuration(currentSplitTime)
-		} else if pb != nil && i < len(pb.Splits) {
-			splitTimeStr = formatDuration(pb.Splits[i].Duration)
 		}
 
 		lineX := 20
 		lineY := yPos
-
 		if i == currentSplit {
-			splitName = fmt.Sprintf("**%s**", splitName)
-			bgColor = color.RGBA{255, 255, 255, 255}
-			text.Draw(screen, splitName, fontFace, lineX, lineY, bgColor)
+			// highlightedName := fmt.Sprintf("**%s**", splitName)
+			// how the name and then an arrow emoji, make sure to include the split time string
+			// follow the same %30s %6s format but add the arrow emoji
+			highlightedName := fmt.Sprintf("%-30s %6s ➡️", splitName, splitTimeStr)
+
+			text.Draw(screen, highlightedName, basicfont.Face7x13, lineX, lineY, color.RGBA{255, 255, 255, 255})
 		} else {
 			splitLine := fmt.Sprintf("%-30s %6s", splitName, splitTimeStr)
-			text.Draw(screen, splitLine, fontFace, lineX, lineY, white)
+			text.Draw(screen, splitLine, basicfont.Face7x13, lineX, lineY, white)
 		}
 
-		lineWidth := font.MeasureString(fontFace, splitName).Round()
-
+		lineWidth := font.MeasureString(basicfont.Face7x13, splitName).Round()
 		if diffStr != "" {
 			const gap = 15
 			diffX := lineX + lineWidth + gap
-			text.Draw(screen, diffStr, fontFace, diffX, lineY, diffColor)
+			text.Draw(screen, diffStr, basicfont.Face7x13, diffX, lineY, diffColor)
 		}
 
 		yPos += 20
