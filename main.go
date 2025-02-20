@@ -22,19 +22,16 @@ const (
 	eventDuration = time.Second
 	dbPath        = "speedrun.db"
 
-	// Column layout constants
 	nameColumnWidth = 200
 	timeColumnWidth = 60
 	lineSpacing     = 20
 	leftPadding     = 20
 )
 
-// shortenStringToFit truncates a string so it fits within maxWidth pixels (when rendered
-// in the provided font face). It appends "... " if truncation is needed.
 func shortenStringToFit(s string, maxWidth int, face font.Face) string {
 	w := font.MeasureString(face, s).Round()
 	if w <= maxWidth {
-		return s // No need to truncate
+		return s
 	}
 
 	ellipsis := "... "
@@ -52,6 +49,7 @@ type Game struct {
 	lastEvent  string
 	eventTime  time.Time
 	runManager *speedrun.RunManager
+	isFinished bool
 }
 
 func (g *Game) Update() error {
@@ -76,7 +74,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	splits := g.runManager.GetCurrentSplits()
 	pb := g.runManager.GetPersonalBest()
 
-	// Simple top-right stats
 	text.Draw(screen, title, fontFace, 220, 20, white)
 	text.Draw(screen, category, fontFace, 270, 40, white)
 	attemptText := fmt.Sprintf("%d/%d", completedRuns, attempts)
@@ -94,21 +91,17 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			cumulativePbTime += pb.Splits[i].Duration
 		}
 
-		// Determine the display time for this split
 		var displayTime time.Duration
 		if i < len(splits) {
 			displayTime = cumulativeTime
 		} else if i == currentSplit && g.runManager.IsRunning() {
-			// Ongoing split
 			displayTime = cumulativeTime + g.runManager.GetCurrentSplitTime()
 		} else if pb != nil && i < len(pb.Splits) {
-			// Fallback to PB time if not yet reached in the current run
 			displayTime = cumulativePbTime
 		}
 
 		splitTimeStr := formatDuration(displayTime)
 
-		// Diff calculation
 		diffStr := ""
 		diffColor := white
 		if i < len(splits) && pb != nil && i < len(pb.Splits) {
@@ -122,26 +115,21 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 		}
 
-		// Calculate column positions
 		lineXName := leftPadding
 		lineXTime := lineXName + nameColumnWidth + 10
 		lineXDiff := lineXTime + timeColumnWidth + 10
 
-		// Truncate the split name if needed
 		displayName := shortenStringToFit(splitName, nameColumnWidth, fontFace)
 
-		// Highlight current split with an arrow
 		if i == currentSplit {
 			highlightColor := color.RGBA{255, 255, 255, 255}
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, highlightColor)
-			// Add an arrow next to the time
 			text.Draw(screen, splitTimeStr+" ➡️", fontFace, lineXTime, yPos, highlightColor)
 		} else {
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, white)
 			text.Draw(screen, splitTimeStr, fontFace, lineXTime, yPos, white)
 		}
 
-		// Draw diff string if any
 		if diffStr != "" {
 			text.Draw(screen, diffStr, fontFace, lineXDiff, yPos, diffColor)
 		}
@@ -149,8 +137,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		yPos += lineSpacing
 	}
 
-	// Draw the main timer in large font at the bottom
-	displayTime := formatDurationMicro(g.runManager.GetCurrentTime())
+	var displayTime string
+	if g.isFinished {
+		displayTime = formatDurationMicro(g.runManager.GetCurrentTime())
+	} else {
+		displayTime = formatDurationMicro(g.runManager.GetCurrentTime())
+	}
 	scale := 3
 	originalMask := basicfont.Face7x13.Mask
 	bounds := originalMask.Bounds()
@@ -183,7 +175,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	x := (windowWidth - textWidth.Round()) / 2
 	text.Draw(screen, displayTime, bigFontFace, x, 300, green)
 
-	// Attribution at bottom
 	attributionText := "OooSplits by OopsKapootz"
 	attributionFontFace := basicfont.Face7x13
 	attributionWidth := font.MeasureString(attributionFontFace, attributionText).Round()
@@ -192,7 +183,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	attributionColor := color.RGBA{150, 150, 150, 255}
 	text.Draw(screen, attributionText, attributionFontFace, attributionX, attributionY, attributionColor)
 
-	// Draw the last event if still within eventDuration
 	if time.Since(g.eventTime) < eventDuration {
 		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
 	}
@@ -246,6 +236,7 @@ func main() {
 
 	game := &Game{
 		runManager: runManager,
+		isFinished: false,
 	}
 
 	ebiten.SetWindowSize(windowWidth, windowHeight)
@@ -277,6 +268,10 @@ func registerHotkeys(g *Game) {
 	for {
 		select {
 		case <-hkSplit.Keydown():
+			if g.isFinished {
+				continue
+			}
+
 			if !g.runManager.IsRunning() {
 				g.runManager.StartRun()
 				g.lastEvent = "Started"
@@ -286,6 +281,7 @@ func registerHotkeys(g *Game) {
 					log.Printf("Error recording split: %v", err)
 				}
 				if isFinished {
+					g.isFinished = true
 					g.lastEvent = "Finished"
 				} else {
 					g.lastEvent = "Split"
@@ -295,17 +291,20 @@ func registerHotkeys(g *Game) {
 			log.Println("Split triggered")
 
 		case <-hkUndo.Keydown():
-			if err := g.runManager.UndoSplit(); err != nil {
-				log.Printf("Error undoing split: %v", err)
+			if !g.isFinished && g.runManager.IsRunning() {
+				if err := g.runManager.UndoSplit(); err != nil {
+					log.Printf("Error undoing split: %v", err)
+				}
+				g.lastEvent = "Undo"
+				g.eventTime = time.Now()
+				log.Println("Undo triggered")
 			}
-			g.lastEvent = "Undo"
-			g.eventTime = time.Now()
-			log.Println("Undo triggered")
 
 		case <-hkReset.Keydown():
 			if err := g.runManager.ResetRun(); err != nil {
 				log.Printf("Error resetting run: %v", err)
 			}
+			g.isFinished = false
 			g.lastEvent = "Reset"
 			g.eventTime = time.Now()
 			log.Println("Reset triggered")
