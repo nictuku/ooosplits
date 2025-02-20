@@ -65,7 +65,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		} else if i == currentSplit && isRunning {
 			splitTimeStr = formatDuration(g.runManager.GetCurrentSplitTime())
 		} else if pb != nil && i < len(pb.Splits) {
-			splitTimeStr = "-"
+			splitTimeStr = formatDuration(pb.Splits[i].Duration)
 		}
 
 		timeWidth := font.MeasureString(fontFace, splitTimeStr).Round()
@@ -100,16 +100,22 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			currentSplitTime := g.runManager.GetCurrentSplitTime()
 			splitTimeStr = formatDuration(currentSplitTime)
 		} else if pb != nil && i < len(pb.Splits) {
-			splitTimeStr = "-"
+			splitTimeStr = formatDuration(pb.Splits[i].Duration)
 		}
 
 		lineX := 20
 		lineY := yPos
 
-		splitLine := fmt.Sprintf("%-30s %6s", splitName, splitTimeStr)
-		text.Draw(screen, splitLine, fontFace, lineX, lineY, white)
+		if i == currentSplit {
+			splitName = fmt.Sprintf("**%s**", splitName)
+			bgColor = color.RGBA{255, 255, 255, 255}
+			text.Draw(screen, splitName, fontFace, lineX, lineY, bgColor)
+		} else {
+			splitLine := fmt.Sprintf("%-30s %6s", splitName, splitTimeStr)
+			text.Draw(screen, splitLine, fontFace, lineX, lineY, white)
+		}
 
-		lineWidth := font.MeasureString(fontFace, splitLine).Round()
+		lineWidth := font.MeasureString(fontFace, splitName).Round()
 
 		if diffStr != "" {
 			const gap = 15
