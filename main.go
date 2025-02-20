@@ -21,7 +21,32 @@ const (
 	windowHeight  = 400
 	eventDuration = time.Second
 	dbPath        = "speedrun.db"
+
+	// Column layout constants
+	nameColumnWidth = 200
+	timeColumnWidth = 60
+	lineSpacing     = 20
+	leftPadding     = 20
 )
+
+// shortenStringToFit truncates a string so it fits within maxWidth pixels (when rendered
+// in the provided font face). It appends "... " if truncation is needed.
+func shortenStringToFit(s string, maxWidth int, face font.Face) string {
+	w := font.MeasureString(face, s).Round()
+	if w <= maxWidth {
+		return s // No need to truncate
+	}
+
+	ellipsis := "... "
+	ellipsisWidth := font.MeasureString(face, ellipsis).Round()
+	maxContentWidth := maxWidth - ellipsisWidth
+
+	truncated := s
+	for font.MeasureString(face, truncated).Round() > maxContentWidth && len(truncated) > 0 {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return truncated + ellipsis
+}
 
 type Game struct {
 	lastEvent  string
@@ -36,6 +61,7 @@ func (g *Game) Update() error {
 func (g *Game) Draw(screen *ebiten.Image) {
 	bgColor := color.RGBA{0, 0, 0, 255}
 	screen.Fill(bgColor)
+
 	fontFace := basicfont.Face7x13
 	white := color.RGBA{255, 255, 255, 255}
 	green := color.RGBA{0, 255, 0, 255}
@@ -47,13 +73,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	attempts := g.runManager.GetAttempts()
 	splitNames := g.runManager.GetSplitNames()
 	currentSplit := g.runManager.GetCurrentSplit()
-	//isRunning := g.runManager.IsRunning()
 	splits := g.runManager.GetCurrentSplits()
 	pb := g.runManager.GetPersonalBest()
 
+	// Simple top-right stats
 	text.Draw(screen, title, fontFace, 220, 20, white)
 	text.Draw(screen, category, fontFace, 270, 40, white)
-
 	attemptText := fmt.Sprintf("%d/%d", completedRuns, attempts)
 	text.Draw(screen, attemptText, fontFace, 270, 60, white)
 
@@ -69,56 +94,63 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			cumulativePbTime += pb.Splits[i].Duration
 		}
 
+		// Determine the display time for this split
 		var displayTime time.Duration
 		if i < len(splits) {
 			displayTime = cumulativeTime
 		} else if i == currentSplit && g.runManager.IsRunning() {
+			// Ongoing split
 			displayTime = cumulativeTime + g.runManager.GetCurrentSplitTime()
 		} else if pb != nil && i < len(pb.Splits) {
+			// Fallback to PB time if not yet reached in the current run
 			displayTime = cumulativePbTime
 		}
 
 		splitTimeStr := formatDuration(displayTime)
+
+		// Diff calculation
 		diffStr := ""
 		diffColor := white
-
 		if i < len(splits) && pb != nil && i < len(pb.Splits) {
 			diff := cumulativeTime - cumulativePbTime
 			if diff < 0 {
-				diffStr = fmt.Sprintf(" (-%s)", formatDuration(-diff))
+				diffStr = fmt.Sprintf("(-%s)", formatDuration(-diff))
 				diffColor = green
 			} else if diff > 0 {
-				diffStr = fmt.Sprintf(" (+%s)", formatDuration(diff))
+				diffStr = fmt.Sprintf("(+%s)", formatDuration(diff))
 				diffColor = orange
 			}
 		}
 
-		lineX := 20
-		lineY := yPos
+		// Calculate column positions
+		lineXName := leftPadding
+		lineXTime := lineXName + nameColumnWidth + 10
+		lineXDiff := lineXTime + timeColumnWidth + 10
+
+		// Truncate the split name if needed
+		displayName := shortenStringToFit(splitName, nameColumnWidth, fontFace)
+
+		// Highlight current split with an arrow
 		if i == currentSplit {
-			// highlightedName := fmt.Sprintf("**%s**", splitName)
-			// how the name and then an arrow emoji, make sure to include the split time string
-			// follow the same %30s %6s format but add the arrow emoji
-			highlightedName := fmt.Sprintf("%-30s %6s ➡️", splitName, splitTimeStr)
-
-			text.Draw(screen, highlightedName, basicfont.Face7x13, lineX, lineY, color.RGBA{255, 255, 255, 255})
+			highlightColor := color.RGBA{255, 255, 255, 255}
+			text.Draw(screen, displayName, fontFace, lineXName, yPos, highlightColor)
+			// Add an arrow next to the time
+			text.Draw(screen, splitTimeStr+" ➡️", fontFace, lineXTime, yPos, highlightColor)
 		} else {
-			splitLine := fmt.Sprintf("%-30s %6s", splitName, splitTimeStr)
-			text.Draw(screen, splitLine, basicfont.Face7x13, lineX, lineY, white)
+			text.Draw(screen, displayName, fontFace, lineXName, yPos, white)
+			text.Draw(screen, splitTimeStr, fontFace, lineXTime, yPos, white)
 		}
 
-		lineWidth := font.MeasureString(basicfont.Face7x13, splitName).Round()
+		// Draw diff string if any
 		if diffStr != "" {
-			const gap = 15
-			diffX := lineX + lineWidth + gap
-			text.Draw(screen, diffStr, basicfont.Face7x13, diffX, lineY, diffColor)
+			text.Draw(screen, diffStr, fontFace, lineXDiff, yPos, diffColor)
 		}
 
-		yPos += 20
+		yPos += lineSpacing
 	}
 
+	// Draw the main timer in large font at the bottom
 	displayTime := formatDurationMicro(g.runManager.GetCurrentTime())
-
 	scale := 3
 	originalMask := basicfont.Face7x13.Mask
 	bounds := originalMask.Bounds()
@@ -151,15 +183,16 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	x := (windowWidth - textWidth.Round()) / 2
 	text.Draw(screen, displayTime, bigFontFace, x, 300, green)
 
+	// Attribution at bottom
 	attributionText := "OooSplits by OopsKapootz"
 	attributionFontFace := basicfont.Face7x13
 	attributionWidth := font.MeasureString(attributionFontFace, attributionText).Round()
 	attributionX := (windowWidth - attributionWidth) / 2
 	attributionY := windowHeight - 15
 	attributionColor := color.RGBA{150, 150, 150, 255}
-
 	text.Draw(screen, attributionText, attributionFontFace, attributionX, attributionY, attributionColor)
 
+	// Draw the last event if still within eventDuration
 	if time.Since(g.eventTime) < eventDuration {
 		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
 	}
@@ -252,7 +285,6 @@ func registerHotkeys(g *Game) {
 				if err != nil {
 					log.Printf("Error recording split: %v", err)
 				}
-
 				if isFinished {
 					g.lastEvent = "Finished"
 				} else {
