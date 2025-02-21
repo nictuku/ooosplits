@@ -74,10 +74,15 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	splits := g.runManager.GetCurrentSplits()
 	pb := g.runManager.GetPersonalBest()
 
-	text.Draw(screen, title, fontFace, 220, 20, white)
-	text.Draw(screen, category, fontFace, 270, 40, white)
+	// title position is middle of the screen
+	// so take the length of the title and subtract half of it from the middle of the screen
+	pos := (windowWidth - len(title)*7) / 2
+	text.Draw(screen, title, fontFace, pos, 20, white)
+	text.Draw(screen, category, fontFace,
+		(windowWidth-len(category)*7)/2, 40, white)
 	attemptText := fmt.Sprintf("%d/%d", completedRuns, attempts)
-	text.Draw(screen, attemptText, fontFace, 270, 60, white)
+	text.Draw(screen, attemptText, fontFace,
+		(windowWidth-len(attemptText)*7)/2, 60, white)
 
 	cumulativeTime := time.Duration(0)
 	cumulativePbTime := time.Duration(0)
@@ -124,7 +129,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		if i == currentSplit {
 			highlightColor := color.RGBA{255, 255, 255, 255}
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, highlightColor)
-			text.Draw(screen, splitTimeStr+" ➡️", fontFace, lineXTime, yPos, highlightColor)
+			text.Draw(screen, splitTimeStr+" <=", fontFace, lineXTime, yPos, highlightColor)
 		} else {
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, white)
 			text.Draw(screen, splitTimeStr, fontFace, lineXTime, yPos, white)
