@@ -14,6 +14,11 @@ import (
 	"golang.org/x/image/font/basicfont"
 
 	"github.com/nictuku/ooosplits/speedrun"
+
+	// internal Go stuff to help with garbage collection profiling
+	"net/http"
+	_ "net/http"
+	_ "net/http/pprof"
 )
 
 const (
@@ -224,6 +229,13 @@ func main() {
 	var importFile string
 	flag.StringVar(&importFile, "import", "", "Import configuration from JSON file")
 	flag.Parse()
+
+	// indicate which port to listen on
+	log.Println("Starting pprof server on localhost:6060")
+	// Start the pprof server and print the address to the console
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	runManager, err := speedrun.NewRunManager(dbPath)
 	if err != nil {
