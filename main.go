@@ -68,7 +68,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	fontFace := basicfont.Face7x13
 	white := color.RGBA{255, 255, 255, 255}
 	green := color.RGBA{0, 255, 0, 255}
-	orange := color.RGBA{255, 165, 0, 255}
+	//orange := color.RGBA{255, 165, 0, 255}
+	red := color.RGBA{255, 0, 0, 255}
 
 	title := g.runManager.GetTitle()
 	category := g.runManager.GetCategory()
@@ -115,13 +116,23 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		diffStr := ""
 		diffColor := white
 		if i < len(splits) && pb != nil && i < len(pb.Splits) {
-			diff := cumulativeTime - cumulativePbTime
+			/*diff := cumulativeTime - cumulativePbTime
 			if diff < 0 {
 				diffStr = fmt.Sprintf("(-%s)", formatDuration(-diff))
 				diffColor = green
 			} else if diff > 0 {
 				diffStr = fmt.Sprintf("(+%s)", formatDuration(diff))
 				diffColor = orange
+			}
+			*/
+			// diff is not cumulative but only the end time of this split minus the end time of the last split (that's the time it took to complete this split), compared to the PB
+			diff := splits[i] - pb.Splits[i].Duration
+			if diff < 0 {
+				diffStr = fmt.Sprintf("(-%s)", formatDuration(-diff))
+				diffColor = green
+			} else if diff > 0 {
+				diffStr = fmt.Sprintf("(+%s)", formatDuration(diff))
+				diffColor = red
 			}
 		}
 
