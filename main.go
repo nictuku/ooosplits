@@ -115,16 +115,18 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			pbSegmentTime = pb.Splits[i].Duration
 			goldSegmentTime = pb.Splits[i].BestSegment
 		}
+		var pbCumulativeTime time.Duration
 
 		if isSplitDone {
 			segmentTime = splits[i]
 
 			for j := 0; j <= i; j++ {
 				cumulativeTime += splits[j]
+				pbCumulativeTime += pb.Splits[j].Duration
 			}
 
 			if pbSegmentTime > 0 {
-				diffPB := segmentTime - pbSegmentTime
+				diffPB := cumulativeTime - pbCumulativeTime
 				if diffPB < 0 {
 					diffPBStr = fmt.Sprintf("-%s", formatDuration(-diffPB))
 					diffPBColor = green
@@ -135,6 +137,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 					diffPBStr = "±0.00"
 					diffPBColor = white
 				}
+
 			}
 
 			if goldSegmentTime > 0 {
@@ -152,10 +155,8 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 		}
 
-		var pbCumulativeTime time.Duration
 		if pb != nil && i < len(pb.Splits) {
 			for j := 0; j <= i; j++ {
-				pbCumulativeTime += pb.Splits[j].Duration
 			}
 		}
 
