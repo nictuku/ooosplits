@@ -11,8 +11,11 @@ import (
 
 // Split represents a single segment of time in a run
 type Split struct {
-	Name     string
-	Duration time.Duration
+	Name        string
+	Duration    time.Duration
+	// NEW: Holds the best (gold) segment time across *all* runs for this split index.
+	// This is computed in memory by scanning the DB. Not necessarily from this run.
+	BestSegment time.Duration
 }
 
 // Run represents a complete speedrun attempt
@@ -74,7 +77,7 @@ func NewRunManager(dbPath string) (*RunManager, error) {
 		log.Printf("Warning: Failed to load personal best: %v", err)
 	}
 
-	return &RunManager{
+	rm := &RunManager{
 		db:            db,
 		title:         title,
 		category:      category,
@@ -83,7 +86,16 @@ func NewRunManager(dbPath string) (*RunManager, error) {
 		splitNames:    splitNames,
 		splits:        make([]time.Duration, 0, len(splitNames)),
 		pb:            pb,
-	}, nil
+	}
+
+	// NEW: If we have a PB, also compute the best (gold) segment times
+	if pb != nil {
+		if err := rm.ComputeBestSegments(); err != nil {
+			log.Printf("Warning: Could not compute best segments: %v", err)
+		}
+	}
+
+	return rm, nil
 }
 
 // Close releases database resources
@@ -171,13 +183,13 @@ func (rm *RunManager) Split() (bool, error) {
 	// Record split time
 	splitDuration := time.Since(rm.splitStartTime)
 	rm.splits = append(rm.splits, splitDuration)
-	
+
 	isLastSplit := rm.currentSplit == len(rm.splitNames)-1
 	if isLastSplit {
 		// This was the last split
 		rm.isRunning = false
 		rm.isCompleted = true
-		
+
 		// Save completed run to database
 		if err := rm.saveRun(true); err != nil {
 			return true, fmt.Errorf("error saving completed run: %v", err)
@@ -187,7 +199,7 @@ func (rm *RunManager) Split() (bool, error) {
 		rm.currentSplit++
 		rm.splitStartTime = time.Now()
 	}
-	
+
 	return isLastSplit, nil
 }
 
@@ -196,13 +208,13 @@ func (rm *RunManager) UndoSplit() error {
 	if !rm.isRunning || len(rm.splits) == 0 {
 		return fmt.Errorf("cannot undo: run not active or no splits recorded")
 	}
-	
+
 	// Remove last split and go back
 	rm.splits = rm.splits[:len(rm.splits)-1]
 	rm.currentSplit--
 	rm.splitStartTime = time.Now()
 	rm.isCompleted = false
-	
+
 	return nil
 }
 
@@ -214,13 +226,13 @@ func (rm *RunManager) ResetRun() error {
 			return fmt.Errorf("error saving unfinished run: %v", err)
 		}
 	}
-	
+
 	// Reset everything
 	rm.isRunning = false
 	rm.currentSplit = 0
 	rm.splits = make([]time.Duration, 0, len(rm.splitNames))
 	rm.isCompleted = false
-	
+
 	return nil
 }
 
@@ -248,9 +260,151 @@ func (rm *RunManager) GetCurrentSplitTime() time.Duration {
 	return time.Since(rm.splitStartTime)
 }
 
-// Private utility functions
+// =====================
+// NEW: Best Segments (Gold Splits)
+// =====================
 
-// Helper function to convert Go bool to SQLite int bool
+// ComputeBestSegments looks at *all* completed runs and finds the minimum segment
+// time for each split index. It stores that "gold" time in rm.pb.Splits[i].BestSegment.
+// If you want to store gold times in the DB, you'd need a new table or column. Here, we
+// do it purely in memory for display.
+func (rm *RunManager) ComputeBestSegments() error {
+	if rm.pb == nil || len(rm.pb.Splits) == 0 {
+		// no PB or no splits
+		return nil
+	}
+	numSplits := len(rm.splitNames)
+	bestSegments := make([]time.Duration, numSplits)
+	// Initialize them to a large value
+	for i := 0; i < numSplits; i++ {
+		bestSegments[i] = time.Duration(1<<63 - 1) // big
+	}
+
+	// Query all completed runs + their splits
+	rows, err := rm.db.Query(`
+		SELECT splits.split_index, splits.duration_ns
+		FROM splits
+		JOIN runs ON splits.run_id = runs.id
+		WHERE runs.completed = 1
+	`)
+	if err != nil {
+		return fmt.Errorf("ComputeBestSegments: %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var idx int
+		var durNs int64
+		if err := rows.Scan(&idx, &durNs); err != nil {
+			return fmt.Errorf("ComputeBestSegments scan: %v", err)
+		}
+		d := time.Duration(durNs)
+		if idx >= 0 && idx < numSplits && d < bestSegments[idx] {
+			bestSegments[idx] = d
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	// Now fill in the PB run's BestSegment field
+	for i := range rm.pb.Splits {
+		rm.pb.Splits[i].BestSegment = bestSegments[i]
+	}
+
+	return nil
+}
+
+// =====================
+// NEW: Compare runs to PB
+// =====================
+
+// IsBetterThanPB returns true if the *current run* is better (less total time)
+// than the stored PB. If there is no PB, it returns true if the current run
+// is completed, false otherwise.
+func (rm *RunManager) IsBetterThanPB() bool {
+	if !rm.isCompleted {
+		// not finished
+		return false
+	}
+	var currentTotal time.Duration
+	for _, seg := range rm.splits {
+		currentTotal += seg
+	}
+	if rm.pb == nil {
+		// no PB in DB, so if we completed, it's automatically "better"
+		return true
+	}
+	var pbTotal time.Duration
+	for _, seg := range rm.pb.Splits {
+		pbTotal += seg.Duration
+	}
+	return currentTotal < pbTotal
+}
+
+// SaveAsPB forces the last completed run to become PB, even if it's slower.
+// Typically you'd only call this if IsBetterThanPB() is true, but you can do
+// it unconditionally if you want to override your PB.
+func (rm *RunManager) SaveAsPB() error {
+	if !rm.isCompleted {
+		return fmt.Errorf("cannot save as PB: run not completed")
+	}
+	// We'll assume the last run we saved is the one we want to set as PB.
+	// That means we need to find that run's ID in the DB. If you want to
+	// store it in a field, you can. For simplicity, let's just take the
+	// largest run_id for which completed=1.
+	tx, err := rm.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Unset old PB
+	if _, err = tx.Exec(`UPDATE runs SET is_pb = 0 WHERE is_pb = 1`); err != nil {
+		return fmt.Errorf("error resetting old PB: %v", err)
+	}
+
+	// Find the latest completed run
+	row := tx.QueryRow(`
+		SELECT id 
+		FROM runs
+		WHERE completed = 1
+		ORDER BY id DESC
+		LIMIT 1
+	`)
+	var lastCompletedID int64
+	if err := row.Scan(&lastCompletedID); err != nil {
+		return fmt.Errorf("error finding last completed run: %v", err)
+	}
+
+	// Mark it as PB
+	if _, err := tx.Exec(`UPDATE runs SET is_pb = 1 WHERE id = ?`, lastCompletedID); err != nil {
+		return fmt.Errorf("error setting new PB: %v", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	// Reload PB so rm.pb is up to date
+	newPB, err := loadPersonalBest(rm.db)
+	if err != nil {
+		return fmt.Errorf("error reloading PB: %v", err)
+	}
+	rm.pb = newPB
+
+	// Also re-compute gold splits if you want them updated
+	if err := rm.ComputeBestSegments(); err != nil {
+		log.Printf("Warning: Could not re-compute best segments after SaveAsPB: %v", err)
+	}
+
+	return nil
+}
+
+// =====================
+// Private / existing code
+// =====================
+
 func sqlite3Bool(b bool) int {
 	if b {
 		return 1
@@ -446,7 +600,7 @@ func (rm *RunManager) saveRun(completed bool) error {
 	}
 
 	// Update config
-	_, err = tx.Exec("UPDATE config SET attempts = ?, completed = ? WHERE id = 1", 
+	_, err = tx.Exec("UPDATE config SET attempts = ?, completed = ? WHERE id = 1",
 		rm.attempts, rm.completedRuns)
 	if err != nil {
 		return fmt.Errorf("error updating config: %v", err)
@@ -459,7 +613,7 @@ func (rm *RunManager) saveRun(completed bool) error {
 		VALUES (?, ?, ?, ?, ?, ?, ?)
 	`,
 		rm.title, rm.category, rm.startTime.Format(time.RFC3339),
-		endTime.Format(time.RFC3339), 
+		endTime.Format(time.RFC3339),
 		sqlite3Bool(completed), sqlite3Bool(false), rm.attempts,
 	)
 	if err != nil {
@@ -471,7 +625,7 @@ func (rm *RunManager) saveRun(completed bool) error {
 		return fmt.Errorf("error getting last insert ID: %v", err)
 	}
 
-	// Check if this is a new personal best
+	// Check if this is a new personal best (by total time)
 	isPB := false
 	if completed {
 		var totalTime time.Duration
@@ -492,15 +646,13 @@ func (rm *RunManager) saveRun(completed bool) error {
 
 		if isPB {
 			// Reset previous PB flag if exists
-			_, err = tx.Exec("UPDATE runs SET is_pb = ? WHERE is_pb = ?", 
-				sqlite3Bool(false), sqlite3Bool(true))
+			_, err = tx.Exec("UPDATE runs SET is_pb = 0 WHERE is_pb = 1")
 			if err != nil {
 				return fmt.Errorf("error resetting previous PB: %v", err)
 			}
 
 			// Set this run as PB
-			_, err = tx.Exec("UPDATE runs SET is_pb = ? WHERE id = ?", 
-				sqlite3Bool(true), runID)
+			_, err = tx.Exec("UPDATE runs SET is_pb = 1 WHERE id = ?", runID)
 			if err != nil {
 				return fmt.Errorf("error setting new PB: %v", err)
 			}
@@ -528,28 +680,30 @@ func (rm *RunManager) saveRun(completed bool) error {
 		rm.pb, err = loadPersonalBest(rm.db)
 		if err != nil {
 			log.Printf("Warning: Failed to reload PB: %v", err)
+		} else {
+			// Recompute gold splits so rm.pb.Splits[i].BestSegment is up to date
+			if err := rm.ComputeBestSegments(); err != nil {
+				log.Printf("Warning: Could not compute best segments: %v", err)
+			}
 		}
 	}
 
 	return nil
 }
 
-// Update split names
+// UpdateSplitNames replaces the current split names with a new set
 func (rm *RunManager) UpdateSplitNames(names []string) error {
-	// Start transaction
 	tx, err := rm.db.Begin()
 	if err != nil {
 		return fmt.Errorf("error starting transaction: %v", err)
 	}
 	defer tx.Rollback()
 
-	// Delete existing split names
 	_, err = tx.Exec("DELETE FROM split_names")
 	if err != nil {
 		return fmt.Errorf("error deleting existing split names: %v", err)
 	}
 
-	// Insert new split names
 	for i, name := range names {
 		_, err = tx.Exec("INSERT INTO split_names (name, display_order) VALUES (?, ?)", name, i)
 		if err != nil {
@@ -557,7 +711,6 @@ func (rm *RunManager) UpdateSplitNames(names []string) error {
 		}
 	}
 
-	// Commit transaction
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("error committing transaction: %v", err)
 	}
@@ -566,7 +719,7 @@ func (rm *RunManager) UpdateSplitNames(names []string) error {
 	return nil
 }
 
-// Update run configuration
+// UpdateConfig changes the run title/category in the DB and updates memory
 func (rm *RunManager) UpdateConfig(title, category string) error {
 	_, err := rm.db.Exec("UPDATE config SET title = ?, category = ? WHERE id = 1",
 		title, category)
