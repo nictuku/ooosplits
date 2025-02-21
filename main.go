@@ -103,6 +103,7 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		displayName := shortenStringToFit(splitName, nameColumnWidth, fontFace)
 
 		var segmentTime time.Duration
+		var cumulativeTime time.Duration
 		var pbSegmentTime time.Duration
 		var goldSegmentTime time.Duration
 		var diffPBStr, diffGoldStr string
@@ -117,6 +118,10 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 		if isSplitDone {
 			segmentTime = splits[i]
+
+			for j := 0; j <= i; j++ {
+				cumulativeTime += splits[j]
+			}
 
 			if pbSegmentTime > 0 {
 				diffPB := segmentTime - pbSegmentTime
@@ -147,20 +152,27 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 		}
 
+		var pbCumulativeTime time.Duration
+		if pb != nil && i < len(pb.Splits) {
+			for j := 0; j <= i; j++ {
+				pbCumulativeTime += pb.Splits[j].Duration
+			}
+		}
+
 		if i == currentSplitIndex && !g.isFinished && g.runManager.IsRunning() {
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, white)
-			if pbSegmentTime > 0 {
-				text.Draw(screen, formatDuration(pbSegmentTime), fontFace, lineXTime, yPos, gray)
+			if pbCumulativeTime > 0 {
+				text.Draw(screen, formatDuration(pbCumulativeTime), fontFace, lineXTime, yPos, gray)
 			}
 		} else if isSplitDone {
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, white)
 			text.Draw(screen, diffPBStr, fontFace, lineXDiffPB, yPos, diffPBColor)
 			text.Draw(screen, diffGoldStr, fontFace, lineXGold, yPos, diffGoldColor)
-			text.Draw(screen, formatDuration(segmentTime), fontFace, lineXTime, yPos, white)
+			text.Draw(screen, formatDuration(cumulativeTime), fontFace, lineXTime, yPos, white)
 		} else {
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, gray)
-			if pbSegmentTime > 0 {
-				text.Draw(screen, formatDuration(pbSegmentTime), fontFace, lineXTime, yPos, gray)
+			if pbCumulativeTime > 0 {
+				text.Draw(screen, formatDuration(pbCumulativeTime), fontFace, lineXTime, yPos, gray)
 			}
 		}
 
