@@ -75,10 +75,9 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	attempts := g.runManager.GetAttempts()
 	splitNames := g.runManager.GetSplitNames()
 	currentSplitIndex := g.runManager.GetCurrentSplit()
-	splits := g.runManager.GetCurrentSplits() // these are your per-split durations
+	splits := g.runManager.GetCurrentSplits()
 	pb := g.runManager.GetPersonalBest()
 
-	// Center the title/category/attempt lines.
 	pos := (windowWidth - len(title)*7) / 2
 	text.Draw(screen, title, fontFace, pos, 20, white)
 	text.Draw(screen, category, fontFace,
@@ -87,42 +86,38 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	text.Draw(screen, attemptText, fontFace,
 		(windowWidth-len(attemptText)*7)/2, 60, white)
 
-	// Layout columns:
-	//  1) Name
-	//  2) PB Diff
-	//  3) Gold Diff
-	//  4) Time
 	lineXName := leftPadding
 	lineXDiffPB := lineXName + nameColumnWidth + 10
 	lineXGold := lineXDiffPB + diffColumnWidth + 10
 	lineXTime := lineXGold + diffColumnWidth + 10
 
-	yPos := 100
+	yPos := 80
+	text.Draw(screen, "Split", fontFace, lineXName, yPos, white)
+	text.Draw(screen, "vs PB", fontFace, lineXDiffPB, yPos, white)
+	text.Draw(screen, "vs Gold", fontFace, lineXGold, yPos, white)
+	text.Draw(screen, "Time", fontFace, lineXTime, yPos, white)
 
-	// Loop through all splits to display
+	yPos = 100
+
 	for i, splitName := range splitNames {
-
 		displayName := shortenStringToFit(splitName, nameColumnWidth, fontFace)
 
-		// figure out the segment time if this split is completed
 		var segmentTime time.Duration
 		var pbSegmentTime time.Duration
 		var goldSegmentTime time.Duration
 		var diffPBStr, diffGoldStr string
 		var diffPBColor, diffGoldColor color.Color = white, white
 
-		isSplitDone := (i < len(splits)) // i.e. we have a final time for that segment
+		isSplitDone := (i < len(splits))
 
 		if pb != nil && i < len(pb.Splits) {
 			pbSegmentTime = pb.Splits[i].Duration
-			// if you store best segment in PB:
-			goldSegmentTime = pb.Splits[i].BestSegment // or wherever you store the gold
+			goldSegmentTime = pb.Splits[i].BestSegment
 		}
 
 		if isSplitDone {
 			segmentTime = splits[i]
 
-			// Diff with PB’s segment
 			if pbSegmentTime > 0 {
 				diffPB := segmentTime - pbSegmentTime
 				if diffPB < 0 {
@@ -137,7 +132,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 				}
 			}
 
-			// Diff with Gold
 			if goldSegmentTime > 0 {
 				diffGold := segmentTime - goldSegmentTime
 				if diffGold < 0 {
@@ -153,42 +147,29 @@ func (g *Game) Draw(screen *ebiten.Image) {
 			}
 		}
 
-		// Now decide what to display based on whether this split is active, done, or not yet reached
-		// For the "active" split (i == currentSplitIndex):
-		//   show name, show PB time in column 4, columns 2 & 3 blank
 		if i == currentSplitIndex && !g.isFinished && g.runManager.IsRunning() {
-			// Active row
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, white)
-			// PB time (if we have it) in column 4:
 			if pbSegmentTime > 0 {
 				text.Draw(screen, formatDuration(pbSegmentTime), fontFace, lineXTime, yPos, gray)
 			}
-			// columns 2 & 3 empty
-
 		} else if isSplitDone {
-			// Already completed this split
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, white)
-			// PB diff
 			text.Draw(screen, diffPBStr, fontFace, lineXDiffPB, yPos, diffPBColor)
-			// Gold diff
 			text.Draw(screen, diffGoldStr, fontFace, lineXGold, yPos, diffGoldColor)
-			// Actual segment time
 			text.Draw(screen, formatDuration(segmentTime), fontFace, lineXTime, yPos, white)
-
 		} else {
-			// Not yet reached (and not active)
 			text.Draw(screen, displayName, fontFace, lineXName, yPos, gray)
-			// no other columns
+			if pbSegmentTime > 0 {
+				text.Draw(screen, formatDuration(pbSegmentTime), fontFace, lineXTime, yPos, gray)
+			}
 		}
 
 		yPos += lineSpacing
 	}
 
-	// Big display for total run time at the bottom
 	var displayTime string
 	displayTime = formatDurationMicro(g.runManager.GetCurrentTime())
 
-	// Make the large font
 	scale := 3
 	originalMask := basicfont.Face7x13.Mask
 	bounds := originalMask.Bounds()
@@ -226,7 +207,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	x := (windowWidth - textWidth.Round()) / 2
 	text.Draw(screen, displayTime, bigFontFace, x, 300, green)
 
-	// Attribution
 	attributionText := "OooSplits by OopsKapootz"
 	attributionFontFace := basicfont.Face7x13
 	attributionWidth := font.MeasureString(attributionFontFace, attributionText).Round()
@@ -235,14 +215,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	attributionColor := color.RGBA{150, 150, 150, 255}
 	text.Draw(screen, attributionText, attributionFontFace, attributionX, attributionY, attributionColor)
 
-	// Show event text if recent
 	if time.Since(g.eventTime) < eventDuration {
 		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
 	}
 }
 
 func formatDuration(d time.Duration) string {
-	// mm:ss.xx
 	minutes := int(d.Minutes())
 	seconds := int(d.Seconds()) % 60
 	centiseconds := int(d.Milliseconds()%1000) / 10
@@ -254,7 +232,6 @@ func formatDuration(d time.Duration) string {
 }
 
 func formatDurationMicro(d time.Duration) string {
-	// HH:MM:SS.xx if hours > 0, else MM:SS.xx
 	hours := int(d.Hours())
 	minutes := int(d.Minutes()) % 60
 	seconds := int(d.Seconds()) % 60
@@ -275,7 +252,6 @@ func main() {
 	flag.StringVar(&importFile, "import", "", "Import configuration from JSON file")
 	flag.Parse()
 
-	// Start pprof
 	log.Println("Starting pprof server on localhost:6060")
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
@@ -312,9 +288,9 @@ func main() {
 }
 
 func registerHotkeys(g *Game) {
-	hkSplit := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x53)) // S
-	hkReset := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x55)) // U
-	hkUndo := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x5B))  // [  (just an example)
+	hkSplit := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x53))
+	hkReset := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x55))
+	hkUndo := hotkey.New([]hotkey.Modifier{}, hotkey.Key(0x5B))
 
 	if err := hkUndo.Register(); err != nil {
 		log.Printf("Failed to register Undo hotkey: %v", err)
@@ -361,8 +337,6 @@ func registerHotkeys(g *Game) {
 			}
 
 		case <-hkReset.Keydown():
-			// Here is a good place to decide if we want to save PB or not
-			// if the run is better than PB, do something like:
 			if g.isFinished && g.runManager.IsBetterThanPB() {
 				err := g.runManager.SaveAsPB()
 				if err != nil {
