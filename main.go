@@ -292,7 +292,7 @@ func main() {
 
 	ebiten.SetWindowSize(windowWidth, windowHeight)
 	ebiten.SetWindowTitle("Speedrun Timer")
-	ebiten.SetTPS(60)
+	ebiten.SetTPS(120)
 
 	go registerHotkeys(game)
 
