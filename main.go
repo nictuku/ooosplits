@@ -218,8 +218,25 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	}
 
 	textWidth := font.MeasureString(bigFontFace, displayTime)
-	x := (windowWidth - textWidth.Round()) / 2
+	//x := (windowWidth - textWidth.Round()) / 2
+	// right-align
+	x := windowWidth - textWidth.Round() - leftPadding
 	text.Draw(screen, displayTime, bigFontFace, x, 300, green)
+
+	// Add Sum of Best Segments section
+	if pb != nil {
+		var sumOfBest time.Duration
+		for i := range pb.Splits {
+			if i < len(pb.Splits) && pb.Splits[i].BestSegment > 0 {
+				sumOfBest += pb.Splits[i].BestSegment
+			}
+		}
+
+		sobText := fmt.Sprintf("Sum of Best: %s", formatDurationMicro(sumOfBest))
+		sobWidth := font.MeasureString(fontFace, sobText).Round()
+		rightAlignX := windowWidth - sobWidth - leftPadding
+		text.Draw(screen, sobText, fontFace, rightAlignX, 320, white)
+	}
 
 	attributionText := "OooSplits by OopsKapootz"
 	attributionFontFace := basicfont.Face7x13
@@ -233,7 +250,6 @@ func (g *Game) Draw(screen *ebiten.Image) {
 		text.Draw(screen, g.lastEvent, fontFace, 500, 50, green)
 	}
 }
-
 func formatDuration(d time.Duration) string {
 	minutes := int(d.Minutes())
 	seconds := int(d.Seconds()) % 60
